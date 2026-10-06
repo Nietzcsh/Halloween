@@ -46,8 +46,11 @@ export default function ExpenseEditor({ expense, members, onClose }) {
     ...participants.filter((k) => !memberKeys.includes(k)),
   ];
 
-  const amount = parsePeso(amountStr);
-  const amountOk = Number.isFinite(amount) && amount > 0;
+  // Amount is optional: blank = "not sure yet". Only typed-but-invalid input is an error.
+  const amountBlank = amountStr.trim() === '';
+  const amount = amountBlank ? 0 : parsePeso(amountStr);
+  const amountInvalid = !amountBlank && !(Number.isFinite(amount) && amount > 0);
+  const amountOk = !amountBlank && !amountInvalid;
 
   const shares = useMemo(() => {
     if (splitMode === 'equal') return splitEqual(amountOk ? amount : 0, partKeys);
@@ -94,10 +97,10 @@ export default function ExpenseEditor({ expense, members, onClose }) {
 
   async function save() {
     setError('');
+    // Only the name is required. People and amount can be added later.
     if (!title.trim()) return setError('Give the expense a name (e.g. Airbnb).');
-    if (!amountOk) return setError('Enter a valid amount, like 6000 or 1,250.50');
-    if (!partKeys.length) return setError('Pick at least one person for the hatian.');
-    if (splitMode === 'custom' && diff !== 0) {
+    if (amountInvalid) return setError('That amount looks off. Use numbers like 6000 or 1,250.50, or leave it blank for now.');
+    if (splitMode === 'custom' && amountOk && partKeys.length && diff !== 0) {
       return setError(`Custom shares add up to ${peso(shareTotal)}, but the expense is ${peso(amount)}.`);
     }
 
@@ -167,13 +170,13 @@ export default function ExpenseEditor({ expense, members, onClose }) {
             <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Airbnb" maxLength={60} />
           </label>
           <label className="field">
-            <span className="label">Amount (₱)</span>
+            <span className="label">Amount (₱) <span className="muted tiny">optional for now</span></span>
             <input
               className="input"
               inputMode="decimal"
               value={amountStr}
               onChange={(e) => setAmountStr(e.target.value)}
-              placeholder="6000"
+              placeholder="e.g. 6000 (or leave blank)"
             />
           </label>
           <label className="field">
@@ -191,13 +194,14 @@ export default function ExpenseEditor({ expense, members, onClose }) {
 
         <div className="field">
           <div className="row between wrap gap">
-            <span className="label">Kasama sa hatian ({partKeys.length})</span>
+            <span className="label">Kasama sa hatian ({partKeys.length}) <span className="muted tiny">optional for now</span></span>
             <div className="row gap">
               <button type="button" className="btn btn-ghost btn-xs" onClick={() => setParticipants(memberKeys)}>Select all</button>
               <button type="button" className="btn btn-ghost btn-xs" onClick={() => setParticipants([])}>Clear</button>
             </div>
           </div>
           <div className="pick-grid">
+            {members.length === 0 && <span className="muted small">No friends have joined yet. Add people later.</span>}
             {members.map((m) => (
               <button
                 key={m.key}
@@ -211,6 +215,17 @@ export default function ExpenseEditor({ expense, members, onClose }) {
             ))}
           </div>
         </div>
+
+        {partKeys.length === 0 && (
+          <p className="hint">
+            💡 You can save this now with just the name, then open it again later to add who's in the hatian.
+            Once you pick people, the amount splits equally automatically, or switch to custom amounts.
+          </p>
+        )}
+
+        {partKeys.length > 0 && !amountOk && (
+          <p className="hint">💡 Add the amount whenever you know it. The split will fill in by itself.</p>
+        )}
 
         {partKeys.length > 0 && (
           <div className="field">
