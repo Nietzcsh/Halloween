@@ -31,29 +31,43 @@ export function ExpenseCard({ expense: e, nameOf, me, onClick }) {
           </div>
         </div>
         <div className="right">
-          <div className="amount">{peso(e.amount)}</div>
-          <StatusChip paid={st.done}>{st.done ? 'All settled' : `${st.paidCount}/${st.total} paid`}</StatusChip>
+          <div className="amount">{st.noAmount ? <span className="muted">Amount TBD</span> : peso(e.amount)}</div>
+          {st.draft ? (
+            <span className="chip chip-draft">✏️ {st.noPeople ? 'Hatian TBD' : 'Amount TBD'}</span>
+          ) : (
+            <StatusChip paid={st.done}>{st.done ? 'All settled' : `${st.paidCount}/${st.total} paid`}</StatusChip>
+          )}
         </div>
       </div>
 
-      {me && myShare !== undefined && (
+      {st.noPeople && (
+        <p className="muted small draft-note">
+          {clickable ? 'No one in the hatian yet. Tap to add people.' : 'Rory is still deciding who is in the hatian.'}
+        </p>
+      )}
+
+      {me && myShare !== undefined && !st.noAmount && (
         <div className="my-share">
           <span>Your share: <b>{peso(myShare)}</b></span>
           <StatusChip paid={isSettled(e, me)}>{e.paidBy === me ? 'You paid this' : undefined}</StatusChip>
         </div>
       )}
 
-      <div className="chips">
-        {(e.participants || []).map((k) => (
-          <span
-            key={k}
-            className={`chip ${isSettled(e, k) ? 'chip-paid' : 'chip-unpaid'} ${k === me ? 'chip-me' : ''}`}
-            title={isSettled(e, k) ? 'Paid' : 'Not yet paid'}
-          >
-            {isSettled(e, k) ? '✓ ' : ''}
-            {nameOf(k)} · {peso(e.shares?.[k])}
-          </span>
-        ))}
+      <div className={(e.participants || []).length ? 'chips' : ''}>
+        {(e.participants || []).map((k) =>
+          st.noAmount ? (
+            <span key={k} className={`chip ${k === me ? 'chip-me' : ''}`}>{nameOf(k)}</span>
+          ) : (
+            <span
+              key={k}
+              className={`chip ${isSettled(e, k) ? 'chip-paid' : 'chip-unpaid'} ${k === me ? 'chip-me' : ''}`}
+              title={isSettled(e, k) ? 'Paid' : 'Not yet paid'}
+            >
+              {isSettled(e, k) ? '✓ ' : ''}
+              {nameOf(k)} · {peso(e.shares?.[k])}
+            </span>
+          ),
+        )}
       </div>
 
       {e.notes && <p className="notes">📝 {e.notes}</p>}
