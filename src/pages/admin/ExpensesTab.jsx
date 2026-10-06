@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useExpenses, useMembers, useNameOf } from '../../hooks';
-import { computeLedger } from '../../lib/settle';
+import { computeLedger, expenseStatus } from '../../lib/settle';
 import { peso, sum } from '../../lib/money';
 import { ExpenseCard } from '../../components/ExpenseCard';
 import { Empty, Loading, Stat } from '../../components/ui';
@@ -17,12 +17,13 @@ export default function ExpensesTab() {
 
   const total = sum(expenses.map((e) => e.amount));
   const unpaid = sum(ledger.debts.map((d) => d.amount));
+  const drafts = expenses.filter((e) => expenseStatus(e).draft);
 
   return (
     <div className="stack-lg">
       <div className="row between wrap gap">
         <h1 className="page-title">💸 Expenses</h1>
-        <button type="button" className="btn btn-primary" onClick={() => setEditing('new')} disabled={!members.length}>
+        <button type="button" className="btn btn-primary" onClick={() => setEditing('new')}>
           + New expense
         </button>
       </div>
@@ -35,9 +36,20 @@ export default function ExpensesTab() {
         </div>
       </div>
 
-      {!members.length && <Empty icon="🧟">Add friends first (or share the invite link) so you can split expenses.</Empty>}
+      {drafts.length > 0 && (
+        <p className="hint">
+          ✏️ {drafts.length} expense{drafts.length > 1 ? 's' : ''} still need{drafts.length > 1 ? '' : 's'} people or an
+          amount: {drafts.map((d) => d.title).join(', ')}. Tap one to finish it.
+        </p>
+      )}
 
-      {members.length > 0 && expenses.length === 0 && (
+      {!members.length && (
+        <p className="muted small">
+          No friends have joined yet. You can still list expenses now and add people to the hatian later.
+        </p>
+      )}
+
+      {expenses.length === 0 && (
         <Empty icon="🪦">No expenses yet. Tap “New expense” to add the Airbnb, tickets, drinks…</Empty>
       )}
 
