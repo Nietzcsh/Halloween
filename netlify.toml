@@ -4,6 +4,9 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Firebase web config is public by design (Vite inlines VITE_* vars into the
+  # client bundle); data is protected by Firestore security rules, not these values.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_FIREBASE_APP_ID,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_PROJECT_ID"
 
 # Single-page app: send every route (/budget, /polls/abc, /admin) to index.html
 [[redirects]]
