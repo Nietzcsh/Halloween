@@ -99,5 +99,21 @@ test('receipt lists only unpaid items by default', () => {
 });
 
 test('expense status ignores the payer', () => {
-  assert.deepEqual(expenseStatus(expenses[0]), { paidCount: 1, total: 2, done: false });
+  const s = expenseStatus(expenses[0]);
+  assert.equal(s.paidCount, 1);
+  assert.equal(s.total, 2);
+  assert.equal(s.done, false);
+  assert.equal(s.draft, false);
+});
+
+test('expense with no people or no amount yet is a draft, not "settled"', () => {
+  const noPeople = { id: 'x', title: 'Costumes', amount: 300000, participants: [], shares: {}, paid: {} };
+  const noAmount = { id: 'y', title: 'Taxi', amount: 0, participants: ['ana'], shares: { ana: 0 }, paid: {} };
+  assert.equal(expenseStatus(noPeople).draft, true);
+  assert.equal(expenseStatus(noPeople).done, false);
+  assert.equal(expenseStatus(noAmount).draft, true);
+  const { debts, people } = computeLedger([noPeople, noAmount]);
+  assert.equal(debts.length, 0); // drafts never create debts
+  assert.equal(people.ana?.unpaid ?? 0, 0);
+  assert.equal(buildReceipt('ana', [noPeople], (k) => k).items.length, 0);
 });
