@@ -17,11 +17,18 @@ export function isSettled(expense, key) {
   return key === expense.paidBy || !!expense.paid?.[key];
 }
 
-/** How many of the people who need to pay have paid. */
+/**
+ * How many of the people who need to pay have paid.
+ * An expense with no people yet, or no amount yet, is a draft: Rory is still filling it in.
+ */
 export function expenseStatus(expense) {
-  const owing = (expense.participants || []).filter((k) => k !== expense.paidBy);
+  const participants = expense.participants || [];
+  const noPeople = participants.length === 0;
+  const noAmount = !(expense.amount > 0);
+  const owing = participants.filter((k) => k !== expense.paidBy);
   const paidCount = owing.filter((k) => expense.paid?.[k]).length;
-  return { paidCount, total: owing.length, done: paidCount === owing.length };
+  const draft = noPeople || noAmount;
+  return { paidCount, total: owing.length, done: !draft && paidCount === owing.length, draft, noPeople, noAmount };
 }
 
 /**
@@ -35,6 +42,7 @@ export function computeLedger(expenses) {
   const debts = [];
 
   for (const e of expenses || []) {
+    if (!(e.amount > 0)) continue; // draft with no amount yet: nobody owes anything for it
     const to = e.paidBy || FUND;
     if (e.paidBy) person(e.paidBy).fronted += e.amount || 0;
 
@@ -116,6 +124,7 @@ export function buildReceipt(memberKey, expenses, nameOf, { includeSettled = fal
   const items = [];
   for (const e of expenses || []) {
     if (!(e.participants || []).includes(memberKey)) continue;
+    if (expenseStatus(e).draft) continue; // no amount yet: nothing to bill
     const settled = isSettled(e, memberKey);
     if (settled && !includeSettled) continue;
     const isPayer = e.paidBy === memberKey;
