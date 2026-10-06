@@ -1,0 +1,122 @@
+rules_version = '2';
+
+// Rory's Halloween Kemerut — Firestore security rules
+//
+// Who is who:
+//  - Everyone gets a silent anonymous Firebase account (request.auth.uid).
+//  - A friend = has a doc uids/{uid} that points to their members/{key}.
+//  - Rory (admin) = has a doc admins/{uid}. That doc can ONLY be created by sending
+//    the correct PIN, which must match a document ID in adminSecrets/ (nobody can read that collection).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isMember() { return signedIn() && exists(/databases/$(database)/documents/uids/$(request.auth.uid)); }
+    function myKey() { return get(/databases/$(database)/documents/uids/$(request.auth.uid)).data.memberKey; }
+    function canRead() { return isAdmin() || isMember(); }
+
+    function validMember(key) {
+      let d = request.resource.data;
+      return key.matches('^[a-z0-9]+(-[a-z0-9]+)*$') && key.size() <= 40
+        && d.key == key
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 30;
+    }
+
+    // ---------- Admin PIN ----------
+    match /adminSecrets/{pin} {
+      allow read, write: if false; // create the PIN doc by hand in the Firebase console
+    }
+
+    match /admins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['pin', 'at'])
+        && request.resource.data.pin is string
+        && request.resource.data.pin.matches('^[A-Za-z0-9_-]{4,64}$')
+        && exists(/databases/$(database)/documents/adminSecrets/$(request.resource.data.pin));
+      allow delete: if signedIn() && request.auth.uid == uid; // "Lock"
+    }
+
+    // ---------- Friends ----------
+    // members/{key}: key is the normalized name, so a name can only exist once.
+    match /members/{key} {
+      allow read: if signedIn();
+
+      // A friend creates their own name (only one name per phone), or Rory pre-adds one with no phone linked.
+      allow create: if (
+          signedIn() && validMember(key)
+          && request.resource.data.uid == request.auth.uid
+          && !exists(/databases/$(database)/documents/uids/$(request.auth.uid))
+          && getAfter(/databases/$(database)/documents/uids/$(request.auth.uid)).data.memberKey == key
+        ) || (
+          isAdmin() && validMember(key) && request.resource.data.uid == null
+        );
+
+      // A friend can claim a name only if no phone is linked to it (Rory pre-added it or reset it).
+      allow update: if isAdmin() || (
+          signedIn()
+          && resource.data.uid == null
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'claimedAt'])
+          && !exists(/databases/$(database)/documents/uids/$(request.auth.uid))
+          && getAfter(/databases/$(database)/documents/uids/$(request.auth.uid)).data.memberKey == key
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // uids/{uid}: "this phone is member X". Written in the same transaction as the member doc.
+    match /uids/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['memberKey', 'at'])
+        && getAfter(/databases/$(database)/documents/members/$(request.resource.data.memberKey)).data.uid == uid;
+      allow delete: if isAdmin(); // "Reset phone" / remove
+    }
+
+    // ---------- Money ----------
+    match /expenses/{id} {
+      allow read: if canRead();
+      allow write: if isAdmin();
+    }
+
+    match /photos/{id} {
+      allow read: if canRead();
+      allow create, update: if isAdmin()
+        && request.resource.data.data is string
+        && request.resource.data.data.matches('^data:image/jpeg;base64,.*')
+        && request.resource.data.data.size() < 1000000;
+      allow delete: if isAdmin();
+    }
+
+    // Friends only see their own receipts.
+    match /receipts/{id} {
+      allow read: if isAdmin() || (isMember() && resource.data.memberKey == myKey());
+      allow write: if isAdmin();
+    }
+
+    // ---------- Polls ----------
+    match /polls/{pollId} {
+      allow read: if canRead();
+      allow write: if isAdmin();
+
+      // Answers: doc id = the friend's member key, so one answer per friend per poll.
+      match /responses/{memberKey} {
+        allow get: if isAdmin() || (isMember() && myKey() == memberKey);
+        allow list: if isAdmin();
+        allow create, update: if isMember()
+          && myKey() == memberKey
+          && get(/databases/$(database)/documents/polls/$(pollId)).data.open == true
+          && request.resource.data.keys().hasOnly(['answer', 'memberKey', 'at'])
+          && request.resource.data.memberKey == memberKey
+          && request.resource.data.answer is string
+          && request.resource.data.answer.size() > 0
+          && request.resource.data.answer.size() <= 500;
+        allow delete: if isAdmin();
+      }
+    }
+  }
+}
